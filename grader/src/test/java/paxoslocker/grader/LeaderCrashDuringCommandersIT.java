@@ -1,0 +1,1 @@
+package paxoslocker.grader; import org.junit.jupiter.api.*; @Tag("integration") class LeaderCrashDuringCommandersIT{@Test void scenario(){IntegrationScenarioSupport.leaderScenario("duringCommander");}}

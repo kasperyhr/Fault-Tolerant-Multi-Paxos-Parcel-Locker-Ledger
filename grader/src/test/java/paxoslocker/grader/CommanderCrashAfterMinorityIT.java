@@ -1,0 +1,1 @@
+package paxoslocker.grader; import org.junit.jupiter.api.*; import paxoslocker.diagnostics.WorkerEventType; @Tag("integration") class CommanderCrashAfterMinorityIT{@Test void scenario(){IntegrationScenarioSupport.workerCrash(false,WorkerEventType.P2B_RECEIVED);}}

@@ -48,3 +48,20 @@ command has exactly one globally unique request ID.
 Submit the `starter` module. Run `./gradlew test` for public tests and
 `./gradlew grade` for the bounded grading workflow. See `GRADING.md` for the
 100-point rubric and safety cap. Do not rely on grader or mutable testkit internals.
+
+## Ownership and allowed changes
+
+Students are expected to modify `Acceptor.java`, `Replica.java`, `Leader.java`,
+`Scout.java`, and `Commander.java`. They may add internal durable-state records,
+timers, mailboxes/actors, recovery helpers, and utilities inside `starter`.
+
+Do not change the public semantics of model records, protocol messages,
+transport contracts, persistence contracts, diagnostics DTOs, membership,
+worker factories, testkit, or grader. The diagnostics package is TA-owned, but
+students must return truthful immutable snapshots from role `status()` methods
+and emit the documented worker hooks and diagnostic events at the correct times.
+
+The supplied dispatcher/lifecycle wiring is infrastructure, not a consensus
+implementation. Students remain responsible for every Paxos state transition,
+quorum decision, pmax/adoption/preemption rule, retry policy, persistence point,
+ordered execution, deduplication, and recovery decision.

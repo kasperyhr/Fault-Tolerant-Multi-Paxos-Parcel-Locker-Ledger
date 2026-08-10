@@ -1,0 +1,1 @@
+package paxoslocker.grader; import org.junit.jupiter.api.*; import paxoslocker.diagnostics.WorkerEventType; @Tag("integration") class CommanderCrashBeforeP2aIT{@Test void scenario(){IntegrationScenarioSupport.workerCrash(false,WorkerEventType.P2A_BEFORE_SEND);}}

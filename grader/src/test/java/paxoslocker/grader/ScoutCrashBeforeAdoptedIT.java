@@ -1,0 +1,1 @@
+package paxoslocker.grader; import org.junit.jupiter.api.*; import paxoslocker.diagnostics.WorkerEventType; @Tag("integration") class ScoutCrashBeforeAdoptedIT{@Test void scenario(){IntegrationScenarioSupport.workerCrash(true,WorkerEventType.ADOPTED_BEFORE_SEND);}}

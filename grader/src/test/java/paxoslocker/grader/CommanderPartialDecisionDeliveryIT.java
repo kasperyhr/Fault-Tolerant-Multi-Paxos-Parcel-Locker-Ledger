@@ -1,0 +1,1 @@
+package paxoslocker.grader; import org.junit.jupiter.api.*; import paxoslocker.diagnostics.WorkerEventType; @Tag("integration") class CommanderPartialDecisionDeliveryIT{@Test void scenario(){IntegrationScenarioSupport.workerCrash(false,WorkerEventType.DECISION_AFTER_SEND);}}

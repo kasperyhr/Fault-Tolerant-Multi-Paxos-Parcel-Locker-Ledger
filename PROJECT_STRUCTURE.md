@@ -246,7 +246,10 @@ Transport 已由 TA 提供。学生应通过 `Transport.send` 完成协议通信
 |---|---|
 | `NodeLifecycle.java` | start、stop、restart、isRunning 生命周期接口。 |
 | `ClusterOptions.java` | 校验 `acceptorCount >= 2f + 1` 并计算 quorum。 |
-| `ParcelLockerMain.java` | CLI 参数入口和模板配置示例。 |
+| `ClusterMembership.java` | Acceptors、Replicas、Leaders 与 strict-majority quorum 的 immutable runtime context。 |
+| `RuntimeNodeFactory.java` | starter-owned 长期节点构造接口。 |
+| `DefaultRuntimeNodeFactory.java` | 默认构造 Acceptor、Replica、Leader，不包含协议答案。 |
+| `ParcelLockerMain.java` | 使用动态 localhost TCP、membership 和 factory 的真实 cluster launcher skeleton。 |
 
 学生需要让角色生命周期与自己的线程、timer、transport registration 和恢复逻辑正确配合，
 但不应更改 `2f+1` 与 majority quorum 的定义。
@@ -276,10 +279,12 @@ Transport 已由 TA 提供。学生应通过 `Transport.send` 完成协议通信
 
 | 文件 | 含义 |
 |---|---|
-| `ClusterConfig.java` | f、acceptor/replica/leader 数量、timeout、seed 和 quorum。 |
+| `ClusterConfig.java` | f、节点数量、timeout、seed、quorum 和 TransportMode。 |
+| `TransportMode.java` | `IN_MEMORY` 或 `LOCAL_TCP`。 |
 | `ClusterNodeFactory.java` | 由 harness 创建学生 Acceptor、Replica、Leader 的工厂。 |
+| `DefaultClusterNodeFactory.java` | 使用冻结 constructor API 创建默认 starter 节点。 |
 | `ClusterHarness.java` | 独立 temp data directory、节点生命周期、submit、await、inspect、crash/restart、partition 与 cleanup。 |
-| `InMemoryTransport.java` | 确定性测试 transport，支持 drop、delay、duplicate、partition 和 pause。 |
+| `InMemoryTransport.java` | 确定性测试 transport，支持 drop、delay、duplicate、reorder、partition 和 pause。 |
 | `MessagePredicate.java` | 按 envelope/message type 选择故障注入目标。 |
 | `FailureController.java` | 节点 crash/restart、worker kill、消息故障、partition/heal、pause/resume。 |
 | `Event.java` | 一条结构化 trace record。 |
@@ -289,6 +294,10 @@ Transport 已由 TA 提供。学生应通过 `Transport.send` 完成协议通信
 | `SafetyViolationException.java` | Safety checker 发现不可恢复违规时立即抛出的错误。 |
 | `Await.java` | 基于条件和 timeout 的 eventually helper，避免脆弱的固定 sleep。 |
 | `PortAllocator.java` | 获取 localhost 动态可用端口。 |
+| `WorkerRegistry.java` | 按 leader/ballot/slot 登记并真正 kill ephemeral workers。 |
+| `InstrumentedWorkerFactory.java` | 包装默认 WorkerFactory，安装 probe 并登记 worker。 |
+| `WorkerEventProbe.java` | await worker event 和 kill-on-next-event。 |
+| `RecordingDiagnosticSink.java` | 将 starter diagnostic event 写入 trace 和 Safety checker。 |
 
 testkit 是环境和观察工具，不会替学生选择 Leader、计算 pmax、发送缺失的 consensus message
 或生成 decision。
@@ -297,8 +306,9 @@ testkit 是环境和观察工具，不会替学生选择 Leader、计算 pmax、
 
 路径：`testkit/src/test/java/paxoslocker/testkit/FrameworkSelfTest.java`
 
-验证动态端口、event trace、drop/delay/duplicate/partition、pause/resume、localhost TCP 和
-Safety checker。即使学生尚未完成任何 Paxos TODO，此测试也必须通过。
+验证 membership、dispatch、restart/unregister、worker registry/kill、hook await、diagnostic
+adapter、per-Replica dedup regression、drop/delay/duplicate/reorder/partition、localhost TCP、
+fresh data directory 和 Safety checker。即使学生尚未完成任何 Paxos TODO，此测试也必须通过。
 
 ## 5. `grader`：TA 评分测试
 
@@ -336,12 +346,18 @@ Scout/Commander failure、network adversarial、combined failures、chaos 与 st
 | 文件 | 含义 |
 |---|---|
 | `FrameworkContractTest.java` | seed 和冷启动 temp directory 等 grader 自检。 |
-| `StudentProtocolUnitTest.java` | Acceptor promise/persistence 和 pmax 等学生实现 contract。 |
+| `CoreTypesUnitTest.java` | membership、catch-up messages 和 core types。 |
+| `AcceptorUnitTest.java` | P1A/P2A、idempotence 和 persistence。 |
+| `LeaderUnitTest.java` / `PmaxUnitTest.java` | Leader lifecycle、adoption、preemption、C1 和 pmax。 |
+| `ReplicaUnitTest.java` | proposal、holes、re-proposal、dedup 和 replay。 |
+| `ScoutUnitTest.java` / `CommanderUnitTest.java` | quorum、duplicates、preemption 和 kill。 |
 | `SingleCommandIT.java` | 单命令完整集群收敛测试。 |
-| `ChaosIT.java` | 验证随机 seed 可确定性复现。 |
-| `StressConfigurationTest.java` | 验证 f=2/f=3 quorum 和长测配置。 |
+| `IntegrationScenarioSupport.java` + 各命名 `*IT` | TEST-MATRIX 中的真实冷集群/failure scenario。 |
+| `ChaosIT.java` / `DeterministicChaosIT.java` | seed reproducibility 与真实 deterministic chaos/stabilization。 |
+| `StressF2Test.java` / `StressF3Test.java` | 10,000 requests 和 f=3 quorum-loss/recovery。 |
+| `LongLogStressTest.java` | 不使用 snapshot/GC 的 50,000-slot 测试。 |
 
-在空 starter 上，`StudentProtocolUnitTest` 和 `SingleCommandIT` 到达
+在空 starter 上，`AcceptorUnitTest` 等 student unit tests 和 integration tests 到达
 `TODO(student)` 后失败是正常现象；学生实现完成后，这些测试应逐步变绿。
 
 ## 6. 学生必须完成的集中清单
@@ -353,7 +369,7 @@ Scout/Commander failure、network adversarial、combined failures、chaos 与 st
 | 3 | `worker/Scout.java` | Phase 1 quorum、dedup responses、ADOPTED/PREEMPTED、kill/hooks/status。 |
 | 4 | `worker/Commander.java` | Phase 2 quorum、chosen、DECISION、preemption、kill/hooks/status。 |
 | 5 | `replica/Replica.java` | propose、ordered learn/execute、re-propose、holes、dedup、persistence、catch-up、status。 |
-| 6 | 角色之间的 wiring | transport registration、message dispatch、timers、heartbeat、recovery coordination。 |
+| 6 | 角色内部 coordination | handler state transition、timers、heartbeat、recovery coordination；transport registration 和类型 dispatch 已由 TA 提供。 |
 
 不要实现 snapshot、checkpoint、garbage collection、dynamic membership 或 Byzantine
 fault tolerance；这些不在本作业范围内。
@@ -382,3 +398,31 @@ fault tolerance；这些不在本作业范围内。
 ```
 
 Windows 使用对应的 `gradlew.bat`。
+
+## TA API Freeze
+
+本次 release 之后，以下 public API 视为冻结，学生可以稳定依赖：
+
+- `paxoslocker.model` 中的 NodeId、BallotNumber、PValue、Command 和 locker 状态机；
+- `paxoslocker.protocol` 中全部 Phase 1/2、proposal、decision、heartbeat 和 decision-sync 消息；
+- `Transport`、`MessageEnvelope`、`LocalTcpTransport`；
+- `PersistentStore` 与 `FileStore`；
+- `ClusterMembership`、`NodeLifecycle`、`RuntimeNodeFactory`；
+- diagnostics DTO、`CommanderKey`、`DiagnosticSink`、`ProtocolDiagnosticEvent`；
+- `WorkerFactory`、`DefaultWorkerFactory`、`WorkerHook` 和 worker event types；
+- testkit 的 ClusterHarness、failure injection、worker registry/probe 和 safety observer。
+
+学生允许修改五个核心角色文件：`Acceptor.java`、`Replica.java`、`Leader.java`、
+`Scout.java`、`Commander.java`，并可新增 private/package-private helper、durable state、timer、
+mailbox、recovery helper 和 internal utility。学生不应修改 TA-owned public contract、testkit 或 grader。
+
+长期节点 constructor 已获得完整 runtime context：Acceptor 有 transport/store/membership/sink；
+Replica 额外知道 leader candidates 与 replica peers；Leader 额外获得 WorkerFactory。`start()`
+负责注册 receiver，`stop()` 负责停止 worker/timer 并注销 receiver。dispatcher 只做类型路由，
+handler 中的协议逻辑仍全部属于学生。
+
+`DecisionSyncRequestMessage` 指定 requester、起始 slot 和最大条数；
+`DecisionSyncResponseMessage` 返回 defensive-copy 的 decision 区间。它们不涉及 snapshot 或 GC。
+
+testkit 新增 `WorkerRegistry`、`InstrumentedWorkerFactory`、`WorkerEventProbe` 和
+`RecordingDiagnosticSink`。这些组件只观察、kill 或记录，不选择 Paxos value，也不向协议补发消息。

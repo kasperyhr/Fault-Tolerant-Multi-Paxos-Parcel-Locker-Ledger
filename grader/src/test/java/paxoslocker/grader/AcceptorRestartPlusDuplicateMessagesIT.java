@@ -1,0 +1,1 @@
+package paxoslocker.grader; import org.junit.jupiter.api.*; @Tag("integration") class AcceptorRestartPlusDuplicateMessagesIT{@Test void scenario(){IntegrationScenarioSupport.combined("acceptorDuplicate");}}

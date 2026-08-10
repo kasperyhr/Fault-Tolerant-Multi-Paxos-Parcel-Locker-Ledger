@@ -45,6 +45,27 @@ observable DTO、CLI 与协议 TODO。`testkit` 提供内存 transport、故障�
 event trace、eventually helper 与独立 safety invariant checker。`grader` 只依赖公开 API，未来可从
 学生仓库中移除并单独分发；协议不得读取 grader 状态来推进共识。
 
+## Release API 与运行时 wiring
+
+本 release 提供稳定的 `ClusterMembership`，向所有长期节点注入 Acceptors、Replicas、
+Leaders 和 majority quorum。Acceptor、Replica、Leader 的 `start/stop/restart` 已完成 transport
+receiver 注册与注销；dispatcher 只把公开消息路由到学生 handler，不包含 Paxos 答案。
+
+Replica recovery 使用 `DecisionSyncRequestMessage` / `DecisionSyncResponseMessage` 从 peer Replica
+读取完整 decision log 的区间。请求时机、peer 选择、merge、replay 和 retry 仍由学生实现。
+
+Leader 通过 `WorkerFactory` 创建 Scout/Commander。测试环境使用 `InstrumentedWorkerFactory` 和
+`WorkerRegistry` 精确观察、等待或 kill worker。`DiagnosticSink` 是 starter-owned observer API，
+因此 student code 可以报告 chosen/learned/executed/accepted 等事实，而不依赖 testkit。
+
+CLI 现在会构造真实 `LocalTcpTransport` 集群骨架：
+
+```bash
+./gradlew :starter:run --args="--fault-tolerance 1 --acceptors 3 --replicas 3 --leaders 3 --run-seconds 30"
+```
+
+在核心 TODO 完成前，集群可以构造和注册节点，但不会自动产生 Paxos progress。
+
 ## 1. 项目目标
 
 你需要使用 Java 实现一个基于 Multi-Paxos 的容错分布式状态机。

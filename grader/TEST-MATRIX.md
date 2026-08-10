@@ -1,7 +1,8 @@
 # Grader test matrix
 
-The executable tests are organized by these required families. Hidden course tests
-expand every row; names are stable so failures map to the rubric.
+The checked-in executable tests are organized by these required families. Every
+class named below has a real scenario body; hidden course tests may add parameters
+and seeds, but this matrix no longer stands in place of missing Java tests.
 
 - Core/unit: Ballot ordering/equality/serialization; Acceptor P1A/P2A,
   idempotence, persistence, A1-A3; pmax empty/single/multi-ballot/multi-slot;
@@ -10,7 +11,7 @@ expand every row; names are stable so failures map to the rubric.
   Commander quorum/preemption/duplicate/partial dissemination.
 - Basic integration: `SingleCommandIT`, `SequentialCommandsIT`,
   `ConcurrentClientsIT`, `SameLockerConflictIT`, `CompetingReplicaProposalIT`,
-  `OutOfOrderDecisionIT`.
+  `OutOfOrderDecisionIT`, and real-localhost `LocalTcpSingleCommandIT`.
 - Leader: `LeaderCrashBeforeScoutIT`, `LeaderCrashAfterAdoptedIT`,
   `LeaderCrashDuringCommandersIT`, `LeaderCrashAfterChosenIT`,
   `OldLeaderReturnsIT`, `TwoLeadersCompeteIT`, `ThreeLeadersCompeteIT`,
@@ -34,8 +35,9 @@ expand every row; names are stable so failures map to the rubric.
   `LeaderFailoverPlusOldCommanderIT`, `AcceptorRestartPlusDuplicateMessagesIT`,
   `ReplicaRestartDuringTrafficIT`, `TwoLeadersPlusAcceptorCrashIT`,
   `PartitionFailoverHealIT`.
-- Random/long: deterministic `ChaosIT`, `StressF2Test`, `StressF3Test`, and
-  `LongLogStressTest`. Normal `grade` excludes the expensive stress rows.
+- Random/long: seed reproducibility `ChaosIT`, real `DeterministicChaosIT`,
+  `StressF2Test`, `StressF3Test`, and `LongLogStressTest`. Normal `grade`
+  excludes the expensive stress rows.
 
 Every adversarial family runs `SafetyInvariantChecker` continuously and prints the
 seed plus the final 200 trace events on failure. Integration tests use fresh data

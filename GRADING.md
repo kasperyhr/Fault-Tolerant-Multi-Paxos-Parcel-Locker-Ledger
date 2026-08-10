@@ -1,17 +1,41 @@
 # Grading guide
 
-The rubric totals 100 points: Build/API 5, Core Types 5, Replica 10, Acceptor 15,
-Leader/pmax 10, Scout 10, Commander 10, Basic Integration 10, Crash Recovery and
-Failover 10, Network/Adversarial Safety 10, and Stress/Chaos 5.
+The grader maps each executed test to one rubric section and awards that section
+proportionally to passed tests:
 
-A reproducible safety violation (two different chosen commands for one slot) caps
-the total score at 60. A liveness timeout is not itself proof of a safety failure.
-Graders must include the seed, cluster configuration, status snapshots, and the
-last 200 trace events in failure output.
+| Section | Points |
+|---|---:|
+| Build/API | 5 |
+| Core Types | 5 |
+| Replica | 10 |
+| Acceptor | 15 |
+| Leader/pmax | 10 |
+| Scout | 10 |
+| Commander | 10 |
+| Basic Integration | 10 |
+| Crash Recovery / Failover | 10 |
+| Network / Adversarial Safety | 10 |
+| Stress / Chaos | 5 |
 
-`grade` runs framework, integration, and bounded chaos tests. `gradeFull` adds the
-expensive stress and long-log suites. The generated reports are
-`build/reports/grading/summary.txt` and `summary.json`.
+`grade` runs framework contracts, student unit tests, integration tests, and the
+bounded deterministic chaos suite. `gradeFull` additionally runs StressF2,
+StressF3, and the 50,000-slot long-log suite. Grader test tasks are forced into a
+stable order, and results are collected in a thread-safe queue even though the
+root build permits Gradle parallel execution.
 
-The checked-in grader is intentionally isolated: `starter` never depends on it,
-and grading code may be distributed separately without changing student code.
+The generated `build/reports/grading/summary.json` contains `totalPoints`,
+`maximumPoints`, per-section awarded/maximum/test counts, `failedTests`,
+`passedTests`, `seed`, `safetyViolation`, and `scoreCapApplied`. `summary.txt`
+contains the same information in human-readable form.
+
+A directly observed pair of different chosen commands for one slot is a Safety
+violation and caps the final score at 60/100. A timeout, unavailable quorum, or
+ordinary TODO failure is not automatically a Safety violation.
+
+Use `./gradlew reproduceFailure -Pseed=123456` to rerun the bounded chaos suite.
+On failure, chaos/integration helpers print the seed, cluster config, leader,
+acceptor and replica snapshots, running workers, and the final 200 trace events.
+
+The grader remains isolated: `starter` never depends on `testkit` or `grader`,
+and test infrastructure never computes pmax, elects a leader, or creates a
+decision for the student implementation.
