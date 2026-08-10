@@ -2,6 +2,49 @@
 
 # Fault-Tolerant Multi-Paxos Parcel Locker Ledger
 
+> 代码目录、文件职责与学生 TODO 导航见 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)。
+
+> 本文件是学生 handout，也是规范性需求来源。可执行模板位于 `starter`，可复用测试设施位于
+> `testkit`，TA 测试位于 `grader`。模板刻意不含 Multi-Paxos 核心算法答案。
+
+## 快速开始
+
+要求 Oracle Java 25.0.4。项目使用 Gradle Kotlin DSL 和随仓库提供的 wrapper：
+
+```bash
+./gradlew clean classes     # 空白 starter 必须成功编译
+./gradlew test              # public tests + framework self-tests
+./gradlew integrationTest   # 学生完成协议后运行集成测试
+./gradlew chaosTest -Pseed=123456
+./gradlew grade              # 有界评分套件与 summary.txt/json
+./gradlew gradeFull          # 额外包含长时间 stress suite
+```
+
+Windows 将 `./gradlew` 换成 `gradlew.bat`。失败 seed 可用
+`./gradlew reproduceFailure -Pseed=<seed>` 重放。评分摘要写入
+`build/reports/grading/`，JUnit 细节写入各模块的 `build/reports/tests/`。
+
+CLI 示例：
+
+```bash
+./gradlew :starter:run --args="--fault-tolerance 2 --acceptors 5"
+```
+
+当前 release 状态下，`classes`、public tests 与 `FrameworkSelfTest` 应通过；标记为学生协议
+contract 的 Acceptor/Replica/Leader/Scout/Commander/pmax 与集成测试会因明确的
+`TODO(student)` 而失败，这是预期行为，不是框架配置错误。
+
+## 模块边界
+
+```text
+starter  <- testkit <- grader
+```
+
+`starter` 是学生提交面，包含 domain/message API、localhost transport、持久化 utility、
+observable DTO、CLI 与协议 TODO。`testkit` 提供内存 transport、故障控制器、生命周期 harness、
+event trace、eventually helper 与独立 safety invariant checker。`grader` 只依赖公开 API，未来可从
+学生仓库中移除并单独分发；协议不得读取 grader 状态来推进共识。
+
 ## 1. 项目目标
 
 你需要使用 Java 实现一个基于 Multi-Paxos 的容错分布式状态机。
