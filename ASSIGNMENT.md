@@ -28,6 +28,19 @@ DECISION. Complete pmax, proposal re-proposal, heartbeat/failure suspicion,
 leader retry/backoff, decision catch-up, persistence integration, and request
 deduplication. Preserve the documented A1-A5 and C1-C2 invariants.
 
+## Phase response correlation
+
+`P1bMessage(acceptor, requestedBallot, acceptorBallot, accepted)` separates the
+Scout request identity from the Acceptor's current promise. Likewise,
+`P2bMessage(acceptor, requestedBallot, acceptorBallot, slot)` uses
+`requestedBallot + slot` to identify the original Commander. Workers must reject
+responses for a different requested ballot, count each Acceptor once, and use
+`acceptorBallot` only to decide whether the request succeeded or was preempted.
+
+For example, if Commander 21B sends P2A after an Acceptor has promised 22C, the
+response is `requestedBallot=21B, acceptorBallot=22C`. It routes to Commander21,
+which reports PREEMPTED by 22C. Returning only 22C would lose response correlation.
+
 Replica and acceptor recovery are durable; leaders and workers may restart from
 ephemeral state. A chosen value whose Commander dies before decision broadcast
 must be recovered from acceptor history by a later Phase 1.
@@ -60,6 +73,10 @@ transport contracts, persistence contracts, diagnostics DTOs, membership,
 worker factories, testkit, or grader. The diagnostics package is TA-owned, but
 students must return truthful immutable snapshots from role `status()` methods
 and emit the documented worker hooks and diagnostic events at the correct times.
+The instrumented factory owns `SCOUT_CREATED`/`COMMANDER_CREATED`; worker code emits
+the internal stage hooks. Both normal completion and kill must use `markExited()` so
+the corresponding EXIT event is emitted once. After a before-send hook returns,
+worker code must check its terminal state before actually sending.
 
 The supplied dispatcher/lifecycle wiring is infrastructure, not a consensus
 implementation. Students remain responsible for every Paxos state transition,

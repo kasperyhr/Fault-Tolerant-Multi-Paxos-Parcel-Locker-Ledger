@@ -17,8 +17,8 @@ import java.util.*;
 /** Lifecycle and fault harness. Consensus behavior always comes from student nodes. */
 public final class ClusterHarness implements AutoCloseable {
     private final ClusterConfig config; private final Path dataDirectory;
-    private final EventRecorder events=new EventRecorder(); private final SafetyInvariantChecker safety=new SafetyInvariantChecker();
-    private final RecordingDiagnosticSink diagnostics=new RecordingDiagnosticSink(events,safety);
+    private final EventRecorder events=new EventRecorder(); private final SafetyInvariantChecker safety;
+    private final RecordingDiagnosticSink diagnostics;
     private final WorkerRegistry workerRegistry=new WorkerRegistry(); private final WorkerEventProbe workerEvents=new WorkerEventProbe();
     private final Transport transport; private final InMemoryTransport faultTransport; private final FailureController failures;
     private final ClusterMembership membership; private final InstrumentedWorkerFactory workers;
@@ -26,6 +26,8 @@ public final class ClusterHarness implements AutoCloseable {
 
     private ClusterHarness(ClusterConfig config,Path directory){
         this.config=config; this.dataDirectory=directory;
+        this.safety=new SafetyInvariantChecker(config.quorum(),true);
+        this.diagnostics=new RecordingDiagnosticSink(events,safety);
         this.faultTransport=config.transportMode()==TransportMode.IN_MEMORY?new InMemoryTransport(events):null;
         this.transport=faultTransport!=null?faultTransport:new LocalTcpTransport();
         this.failures=new FailureController(faultTransport,events,workerRegistry);
@@ -59,6 +61,9 @@ public final class ClusterHarness implements AutoCloseable {
     public void awaitExecutedThrough(long slot,Duration timeout){replicas.values().stream().filter(NodeLifecycle::isRunning).findFirst().ifPresent(replica->replica.status());Await.until(()->replicas.values().stream().filter(NodeLifecycle::isRunning).allMatch(r->r.status().lastExecutedSlot()>=slot),timeout,"all live replicas executed through "+slot);}
     public void awaitReplicaConvergence(Duration timeout){Await.until(()->{List<ReplicaStatus>s=replicas.values().stream().filter(NodeLifecycle::isRunning).map(r->{try{return r.status();}catch(UnsupportedOperationException e){return null;}}).filter(Objects::nonNull).toList();if(s.isEmpty())return false;ReplicaStatus f=s.getFirst();return s.stream().allMatch(x->x.decisions().equals(f.decisions())&&x.applicationState().equals(f.applicationState()));},timeout,"replica convergence");}
     public void awaitWorkerEvent(NodeId leader,BallotNumber ballot,Long slot,WorkerEventType type,Duration timeout){workerEvents.await(leader,ballot,slot,type,timeout);}
+    public WorkerEventProbe.ObservedWorkerEvent awaitNextWorkerEvent(NodeId leader,WorkerKind kind,WorkerEventType type,Duration timeout){return workerEvents.awaitNext(leader,kind,type,timeout);}
+    public void armKillNextScoutAt(NodeId leader,WorkerEventType type){workerEvents.onNextMatching(leader,WorkerKind.SCOUT,WorkerEventType.SCOUT_CREATED,created->{if(type==WorkerEventType.SCOUT_CREATED)failures.killScout(leader,created.ballot());else workerEvents.killOnNext(leader,created.ballot(),null,type,()->failures.killScout(leader,created.ballot()));});}
+    public void armKillNextCommanderAt(NodeId leader,WorkerEventType type){workerEvents.onNextMatching(leader,WorkerKind.COMMANDER,WorkerEventType.COMMANDER_CREATED,created->{if(type==WorkerEventType.COMMANDER_CREATED)failures.killCommander(leader,created.ballot(),created.slot());else workerEvents.killOnNext(leader,created.ballot(),created.slot(),type,()->failures.killCommander(leader,created.ballot(),created.slot()));});}
     public ReplicaStatus inspectReplica(NodeId id){return require(replicas,id).status();} public LeaderStatus inspectLeader(NodeId id){return require(leaders,id).status();} public AcceptorStatus inspectAcceptor(NodeId id){return require(acceptors,id).status();}
     public ScoutStatus inspectScout(NodeId l,BallotNumber b){return workerRegistry.scout(l,b).orElseThrow().status();} public CommanderStatus inspectCommander(NodeId l,BallotNumber b,long s){return workerRegistry.commander(l,b,s).orElseThrow().status();}
     private static <T>T require(Map<NodeId,T> map,NodeId id){T value=map.get(id);if(value==null)throw new IllegalArgumentException("unknown node "+id);return value;}

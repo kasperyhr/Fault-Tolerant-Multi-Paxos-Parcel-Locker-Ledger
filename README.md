@@ -58,6 +58,17 @@ Leader 通过 `WorkerFactory` 创建 Scout/Commander。测试环境使用 `Instr
 `WorkerRegistry` 精确观察、等待或 kill worker。`DiagnosticSink` 是 starter-owned observer API，
 因此 student code 可以报告 chosen/learned/executed/accepted 等事实，而不依赖 testkit。
 
+Phase response correlation 使用两个语义不同的 ballot：`P1bMessage` 和 `P2bMessage` 都包含
+`requestedBallot`（定位原 Scout/Commander）与 `acceptorBallot`（Acceptor 当前 promise，用于正常
+response 或 PREEMPTED 判断）；P2B 另以 `slot` 区分同 ballot 的多个 Commander。例如请求 21B、
+Acceptor 已到 22C 时，response 是 `requested=21B, acceptor=22C`：它路由回 Commander21，语义是
+被 22C preempt。两者不可合并。
+
+精确 worker failure tests 会先在 `SCOUT_CREATED`/`COMMANDER_CREATED` 时取得 worker identity 并
+arm trigger，再进入 `P1A_BEFORE_SEND`、`P2A_BEFORE_SEND`、quorum 或 decision dissemination 等
+目标 hook；禁止用 sleep 猜测阶段。ClusterHarness 的 strict safety observer 仅把 distinct
+Acceptor quorum 认证为 chosen，Replica learned event 本身不能证明 chosen。
+
 CLI 现在会构造真实 `LocalTcpTransport` 集群骨架：
 
 ```bash

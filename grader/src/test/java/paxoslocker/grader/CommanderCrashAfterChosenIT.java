@@ -1,1 +1,1 @@
-package paxoslocker.grader; import org.junit.jupiter.api.*; import paxoslocker.diagnostics.WorkerEventType; @Tag("integration") class CommanderCrashAfterChosenIT{@Test void scenario(){IntegrationScenarioSupport.workerCrash(false,WorkerEventType.COMMANDER_QUORUM_REACHED);}}
+package paxoslocker.grader; import org.junit.jupiter.api.*; import paxoslocker.diagnostics.WorkerEventType; @Tag("integration") class CommanderCrashAfterChosenIT{@Test void scenario(){IntegrationScenarioSupport.workerCrash(false,WorkerEventType.DECISION_BEFORE_SEND);}}

@@ -42,3 +42,18 @@ and seeds, but this matrix no longer stands in place of missing Java tests.
 Every adversarial family runs `SafetyInvariantChecker` continuously and prints the
 seed plus the final 200 trace events on failure. Integration tests use fresh data
 directories and dynamic localhost ports, and must close all nodes in teardown.
+
+## Correlation and exact-stage release regressions
+
+- `ProtocolCorrelationFrameworkTest`: stale requested-ballot P1B cannot reach a newer
+  Scout; higher `acceptorBallot` P2B routes to the Commander identified by its original
+  `requestedBallot`; two slots under one ballot cannot cross-route.
+- `WorkerFailurePrecisionFrameworkTest`: trigger is armed from CREATED before worker
+  start, before-send kill prevents any P1A/P2A send, repeated kill is idempotent, and
+  EXIT is emitted exactly once.
+- Framework safety regressions prove learned does not imply chosen, distinct acceptor
+  quorum does imply chosen evidence, strict VALUE_CHOSEN without quorum is rejected,
+  and structured chosen-conflict markers drive score capping.
+- Worker integration scenarios arm before creation/submission and target the event named
+  by each class: first P1B/P2B for minority, quorum/adopted events, decision-before-send,
+  or first decision-after-send for partial dissemination. No fixed sleep is used.

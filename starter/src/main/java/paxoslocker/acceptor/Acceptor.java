@@ -34,11 +34,11 @@ public class Acceptor implements NodeLifecycle {
     }
 
     public P1bMessage onP1a(P1aMessage message) {
-        throw todo("Acceptor.onP1a: promise/adopt and persist ballot");
+        throw todo("Acceptor.onP1a: persist promise and return requestedBallot plus current acceptorBallot");
     }
 
     public P2bMessage onP2a(P2aMessage message) {
-        throw todo("Acceptor.onP2a: validate ballot, accept, and persist PValue");
+        throw todo("Acceptor.onP2a: validate/persist PValue and return its requestedBallot plus current acceptorBallot and slot");
     }
 
     public AcceptorStatus status() {
@@ -70,12 +70,18 @@ public class Acceptor implements NodeLifecycle {
     protected void onEnvelope(MessageEnvelope envelope) {
         if (!running.get() || !envelope.destination().equals(id)) return;
         ProtocolMessage response;
+        if (!membership.leaders().contains(envelope.source())) { ignored(envelope, "Phase request source is not a Leader"); return; }
         if (envelope.message() instanceof P1aMessage p1a) response = onP1a(p1a);
         else if (envelope.message() instanceof P2aMessage p2a) response = onP2a(p2a);
         else { diagnostics.record(new ProtocolDiagnosticEvent(id, Role.ACCEPTOR,
                 ProtocolDiagnosticType.MESSAGE_IGNORED, null, null, null, envelope.source(), null,
                 envelope.message().getClass().getSimpleName())); return; }
         transport.send(MessageEnvelope.of(id, envelope.source(), response));
+    }
+
+    private void ignored(MessageEnvelope envelope, String detail) {
+        diagnostics.record(new ProtocolDiagnosticEvent(id, Role.ACCEPTOR,
+                ProtocolDiagnosticType.MESSAGE_IGNORED, null, null, null, envelope.source(), null, detail));
     }
 
     private static UnsupportedOperationException todo(String text) {

@@ -99,9 +99,9 @@ paxoslocker.app.ParcelLockerMain
 | `ProposeMessage.java` | Replica → Leader：`PROPOSE(slot, command)`。 |
 | `DecisionMessage.java` | Commander/Learner → Replica：`DECISION(slot, command)`。 |
 | `P1aMessage.java` | Scout → Acceptor：Phase 1 请求。 |
-| `P1bMessage.java` | Acceptor → Scout：当前 ballot 和 accepted PValues。 |
+| `P1bMessage.java` | Acceptor → Scout：`requestedBallot` 定位原 Scout，`acceptorBallot` 报告当前 promise，并携带 accepted PValues。 |
 | `P2aMessage.java` | Commander → Acceptor：请求接受一个 PValue。 |
-| `P2bMessage.java` | Acceptor → Commander：返回当前 ballot 和 slot。 |
+| `P2bMessage.java` | Acceptor → Commander：以 `requestedBallot + slot` 定位原 Commander，以 `acceptorBallot` 表达正常响应或 preemption。 |
 | `AdoptedMessage.java` | Scout → Leader：Phase 1 已获得 quorum。 |
 | `PreemptedMessage.java` | Scout/Commander → Leader：观察到更高 ballot。 |
 | `HeartbeatMessage.java` | Leader heartbeat/failure suspicion 所需消息。 |
@@ -292,9 +292,11 @@ Transport 已由 TA 提供。学生应通过 `Transport.send` 完成协议通信
 | `EventRecorder.java` | 有界、按 sequence 排序的事件记录器。 |
 | `SafetyInvariantChecker.java` | 独立检查 chosen uniqueness、Replica agreement、连续执行、request 去重、ballot 单调。 |
 | `SafetyViolationException.java` | Safety checker 发现不可恢复违规时立即抛出的错误。 |
+| `SafetyViolationKind.java` | 结构化 Safety 分类；`CHOSEN_CONFLICT` 是评分上限使用的稳定机器标记。 |
 | `Await.java` | 基于条件和 timeout 的 eventually helper，避免脆弱的固定 sleep。 |
 | `PortAllocator.java` | 获取 localhost 动态可用端口。 |
 | `WorkerRegistry.java` | 按 leader/ballot/slot 登记并真正 kill ephemeral workers。 |
+| `WorkerKind.java` | 区分 Scout 与 Commander 的精确 hook matcher。 |
 | `InstrumentedWorkerFactory.java` | 包装默认 WorkerFactory，安装 probe 并登记 worker。 |
 | `WorkerEventProbe.java` | await worker event 和 kill-on-next-event。 |
 | `RecordingDiagnosticSink.java` | 将 starter diagnostic event 写入 trace 和 Safety checker。 |
@@ -309,6 +311,12 @@ testkit 是环境和观察工具，不会替学生选择 Leader、计算 pmax、
 验证 membership、dispatch、restart/unregister、worker registry/kill、hook await、diagnostic
 adapter、per-Replica dedup regression、drop/delay/duplicate/reorder/partition、localhost TCP、
 fresh data directory 和 Safety checker。即使学生尚未完成任何 Paxos TODO，此测试也必须通过。
+
+`WorkerEventProbe.onNextMatching` 可以在 worker identity 尚不存在时预先 arm；
+`InstrumentedWorkerFactory` 在 registry 完成后、`start()` 前发出 CREATED event，因此 before-send
+failure 不存在“先发生、后注册”的 race。`SafetyInvariantChecker(quorum, true)` 是 ClusterHarness
+使用的 strict 模式：由 distinct `PVALUE_ACCEPTED` quorum 独立建立 chosen evidence，验证
+`VALUE_CHOSEN`，并将 learned observations 与 chosen evidence 分开。
 
 ## 5. `grader`：TA 评分测试
 
@@ -423,6 +431,12 @@ handler 中的协议逻辑仍全部属于学生。
 
 `DecisionSyncRequestMessage` 指定 requester、起始 slot 和最大条数；
 `DecisionSyncResponseMessage` 返回 defensive-copy 的 decision 区间。它们不涉及 snapshot 或 GC。
+
+P1B/P2B response correlation 也是冻结 API：`requestedBallot` 是 routing identity，
+`acceptorBallot` 是 Acceptor current state；P2B 的 `slot` 是 Commander identity 的另一部分。
+Leader 不会把旧 requested ballot 的 P1B 交给新 Scout，也不会用 higher `acceptorBallot` 查找错误
+Commander。Scout/Commander 正常完成和故障终止都应调用冻结的 `markExited()` terminal helper，
+确保 EXIT hook 只出现一次。
 
 testkit 新增 `WorkerRegistry`、`InstrumentedWorkerFactory`、`WorkerEventProbe` 和
 `RecordingDiagnosticSink`。这些组件只观察、kill 或记录，不选择 Paxos value，也不向协议补发消息。

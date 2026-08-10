@@ -84,14 +84,17 @@ public class Replica implements NodeLifecycle {
     protected void onEnvelope(MessageEnvelope envelope) {
         if (!running.get() || !envelope.destination().equals(id)) return;
         switch (envelope.message()) {
-            case DecisionMessage decision -> onDecision(decision);
-            case DecisionSyncRequestMessage request -> onDecisionSyncRequest(request, envelope.source());
-            case DecisionSyncResponseMessage response -> onDecisionSyncResponse(response, envelope.source());
-            case HeartbeatMessage heartbeat -> onHeartbeat(heartbeat, envelope.source());
-            default -> diagnostics.record(new ProtocolDiagnosticEvent(id, Role.REPLICA,
-                    ProtocolDiagnosticType.MESSAGE_IGNORED, null, null, null, envelope.source(), null,
-                    envelope.message().getClass().getSimpleName()));
+            case DecisionMessage decision -> { if (membership.leaders().contains(envelope.source())) onDecision(decision); else ignored(envelope, "DECISION source is not a Leader"); }
+            case DecisionSyncRequestMessage request -> { if (membership.replicas().contains(envelope.source()) && request.requester().equals(envelope.source())) onDecisionSyncRequest(request, envelope.source()); else ignored(envelope, "spoofed DecisionSync requester"); }
+            case DecisionSyncResponseMessage response -> { if (membership.replicas().contains(envelope.source())) onDecisionSyncResponse(response, envelope.source()); else ignored(envelope, "DecisionSync response source is not a Replica"); }
+            case HeartbeatMessage heartbeat -> { if (membership.leaders().contains(envelope.source())) onHeartbeat(heartbeat, envelope.source()); else ignored(envelope, "HEARTBEAT source is not a Leader"); }
+            default -> ignored(envelope, envelope.message().getClass().getSimpleName());
         }
+    }
+
+    private void ignored(MessageEnvelope envelope, String detail) {
+        diagnostics.record(new ProtocolDiagnosticEvent(id, Role.REPLICA,
+                ProtocolDiagnosticType.MESSAGE_IGNORED, null, null, null, envelope.source(), null, detail));
     }
 
     private static UnsupportedOperationException todo(String text) {

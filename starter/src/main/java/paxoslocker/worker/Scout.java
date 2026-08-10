@@ -18,7 +18,7 @@ public class Scout {
     protected final int quorum;
     protected final Transport transport;
     protected final WorkerHook hook;
-    private final AtomicBoolean killed = new AtomicBoolean();
+    private final AtomicBoolean terminal = new AtomicBoolean();
 
     public Scout(NodeId leader, BallotNumber ballot, Set<NodeId> acceptors, int quorum,
                  Transport transport, WorkerHook hook) {
@@ -37,16 +37,23 @@ public class Scout {
     }
 
     public void onP1b(P1bMessage response) {
-        throw todo("Scout.onP1b: ADOPTED or PREEMPTED then exit");
+        throw todo("Scout.onP1b: validate requestedBallot, use acceptorBallot for ADOPTED/PREEMPTED, then exit");
     }
 
     public void kill() {
-        if (killed.compareAndSet(false, true)) hook.onEvent(WorkerEventType.SCOUT_EXITED, ballot, null);
+        markExited();
+    }
+
+    /** Shared terminal transition for kill and normal student-implemented completion. */
+    protected final boolean markExited() {
+        if (!terminal.compareAndSet(false, true)) return false;
+        hook.onEvent(WorkerEventType.SCOUT_EXITED, ballot, null);
+        return true;
     }
 
     public final NodeId leaderId() { return leader; }
     public final BallotNumber ballot() { return ballot; }
-    public final boolean isKilled() { return killed.get(); }
+    public final boolean isKilled() { return terminal.get(); }
     protected final void emit(WorkerEventType event) { hook.onEvent(event, ballot, null); }
 
     public ScoutStatus status() {

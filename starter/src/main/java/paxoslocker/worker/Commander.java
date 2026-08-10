@@ -18,7 +18,7 @@ public class Commander {
     protected final int quorum;
     protected final Transport transport;
     protected final WorkerHook hook;
-    private final AtomicBoolean killed = new AtomicBoolean();
+    private final AtomicBoolean terminal = new AtomicBoolean();
 
     public Commander(NodeId leader, PValue pvalue, Set<NodeId> acceptors, Set<NodeId> replicas,
                      int quorum, Transport transport, WorkerHook hook) {
@@ -38,16 +38,23 @@ public class Commander {
     }
 
     public void onP2b(P2bMessage response) {
-        throw todo("Commander.onP2b: PREEMPTED or broadcast DECISION after quorum");
+        throw todo("Commander.onP2b: validate requestedBallot/slot, use acceptorBallot for PREEMPTED, or broadcast DECISION after quorum");
     }
 
     public void kill() {
-        if (killed.compareAndSet(false, true)) hook.onEvent(WorkerEventType.COMMANDER_EXITED, pvalue.ballot(), pvalue.slot());
+        markExited();
+    }
+
+    /** Shared terminal transition for kill and normal student-implemented completion. */
+    protected final boolean markExited() {
+        if (!terminal.compareAndSet(false, true)) return false;
+        hook.onEvent(WorkerEventType.COMMANDER_EXITED, pvalue.ballot(), pvalue.slot());
+        return true;
     }
 
     public final NodeId leaderId() { return leader; }
     public final PValue pvalue() { return pvalue; }
-    public final boolean isKilled() { return killed.get(); }
+    public final boolean isKilled() { return terminal.get(); }
     protected final void emit(WorkerEventType event) { hook.onEvent(event, pvalue.ballot(), pvalue.slot()); }
 
     public CommanderStatus status() {

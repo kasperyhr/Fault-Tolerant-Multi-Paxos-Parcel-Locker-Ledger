@@ -22,7 +22,9 @@ public final class InstrumentedWorkerFactory implements WorkerFactory {
             if (hook != null) hook.onEvent(type,b,s);
         });
         Scout scout=delegate.createScout(leader,ballot,acceptors,quorum,transport,instrumented);
-        registry.register(scout); return scout;
+        registry.register(scout);
+        instrumented.onEvent(WorkerEventType.SCOUT_CREATED,ballot,null);
+        return scout;
     }
     @Override public Commander createCommander(NodeId leader, PValue pvalue, Set<NodeId> acceptors,
             Set<NodeId> replicas, int quorum, Transport transport, WorkerHook hook) {
@@ -32,6 +34,8 @@ public final class InstrumentedWorkerFactory implements WorkerFactory {
             if (hook != null) hook.onEvent(type,b,s);
         });
         Commander commander=delegate.createCommander(leader,pvalue,acceptors,replicas,quorum,transport,instrumented);
-        registry.register(commander); return commander;
+        registry.register(commander);
+        instrumented.onEvent(WorkerEventType.COMMANDER_CREATED,pvalue.ballot(),pvalue.slot());
+        return commander;
     }
 }

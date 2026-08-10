@@ -28,9 +28,17 @@ The generated `build/reports/grading/summary.json` contains `totalPoints`,
 `passedTests`, `seed`, `safetyViolation`, and `scoreCapApplied`. `summary.txt`
 contains the same information in human-readable form.
 
-A directly observed pair of different chosen commands for one slot is a Safety
-violation and caps the final score at 60/100. A timeout, unavailable quorum, or
-ordinary TODO failure is not automatically a Safety violation.
+A distinct-Acceptor quorum of `PVALUE_ACCEPTED` observations independently establishes
+chosen evidence. `VALUE_CHOSEN` is rejected in strict integration mode unless that exact
+ballot/slot/command already has quorum evidence; a Replica `DECISION_LEARNED` event never
+creates chosen evidence. A conflicting quorum produces structured
+`SafetyViolationKind.CHOSEN_CONFLICT` / `SAFETY_CHOSEN_CONFLICT`, which alone drives the
+60/100 cap. The build no longer searches human prose such as "two chosen values".
+A timeout, unavailable quorum, or ordinary TODO failure is not a Safety violation.
+
+Rubric ownership is centralized in `rubricClasses`. `validateRubricMapping`, run by the
+framework grader task, scans every Java class containing `@Test` and fails unless it maps
+to exactly one section; there is no silent default section.
 
 Use `./gradlew reproduceFailure -Pseed=123456` to rerun the bounded chaos suite.
 On failure, chaos/integration helpers print the seed, cluster config, leader,

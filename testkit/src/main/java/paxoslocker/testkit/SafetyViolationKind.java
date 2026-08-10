@@ -1,0 +1,15 @@
+package paxoslocker.testkit;
+
+public enum SafetyViolationKind {
+    CHOSEN_CONFLICT,
+    VALUE_CHOSEN_WITHOUT_QUORUM,
+    REPLICA_DECISION_CONFLICT,
+    REPLICA_DISAGREES_WITH_CHOSEN,
+    NON_CONTIGUOUS_EXECUTION,
+    DUPLICATE_EXECUTION,
+    BALLOT_REGRESSION,
+    A4,
+    A5,
+    C1,
+    C2
+}

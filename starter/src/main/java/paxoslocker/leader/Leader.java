@@ -112,19 +112,34 @@ public class Leader implements NodeLifecycle {
     protected void onEnvelope(MessageEnvelope envelope) {
         if (!running.get() || !envelope.destination().equals(id)) return;
         switch (envelope.message()) {
-            case ProposeMessage proposal -> onPropose(proposal);
+            case ProposeMessage proposal -> { if (membership.replicas().contains(envelope.source())) onPropose(proposal); else ignored(envelope, "PROPOSE source is not a Replica"); }
             case AdoptedMessage adopted -> onAdopted(adopted);
             case PreemptedMessage preempted -> onPreempted(preempted);
-            case P1bMessage p1b -> { Scout scout = currentScout; if (scout != null) scout.onP1b(p1b); }
-            case P2bMessage p2b -> {
-                Commander commander = commanders.get(new CommanderKey(p2b.ballot(), p2b.slot()));
-                if (commander != null) commander.onP2b(p2b);
+            case P1bMessage p1b -> {
+                Scout scout = currentScout;
+                if (validAcceptorResponse(envelope, p1b.acceptor()) && scout != null
+                        && scout.ballot().equals(p1b.requestedBallot())
+                        && p1b.acceptorBallot().compareTo(p1b.requestedBallot()) >= 0) scout.onP1b(p1b);
+                else ignored(envelope, "stale, malformed, or uncorrelated P1B");
             }
-            case HeartbeatMessage heartbeat -> onHeartbeat(heartbeat, envelope.source());
-            default -> diagnostics.record(new ProtocolDiagnosticEvent(id, Role.LEADER,
-                    ProtocolDiagnosticType.MESSAGE_IGNORED, null, null, null, envelope.source(), null,
-                    envelope.message().getClass().getSimpleName()));
+            case P2bMessage p2b -> {
+                Commander commander = commanders.get(new CommanderKey(p2b.requestedBallot(), p2b.slot()));
+                if (validAcceptorResponse(envelope, p2b.acceptor()) && commander != null
+                        && p2b.acceptorBallot().compareTo(p2b.requestedBallot()) >= 0) commander.onP2b(p2b);
+                else ignored(envelope, "stale, malformed, or uncorrelated P2B");
+            }
+            case HeartbeatMessage heartbeat -> { if (membership.leaders().contains(envelope.source())) onHeartbeat(heartbeat, envelope.source()); else ignored(envelope, "HEARTBEAT source is not a Leader"); }
+            default -> ignored(envelope, envelope.message().getClass().getSimpleName());
         }
+    }
+
+    private boolean validAcceptorResponse(MessageEnvelope envelope, NodeId claimedAcceptor) {
+        return membership.acceptors().contains(envelope.source()) && envelope.source().equals(claimedAcceptor);
+    }
+
+    private void ignored(MessageEnvelope envelope, String detail) {
+        diagnostics.record(new ProtocolDiagnosticEvent(id, Role.LEADER,
+                ProtocolDiagnosticType.MESSAGE_IGNORED, null, null, null, envelope.source(), null, detail));
     }
 
     private static UnsupportedOperationException todo(String text) {

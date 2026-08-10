@@ -15,6 +15,61 @@ dependencies {
 
 val gradingResults = ConcurrentLinkedQueue<Map<String, Any>>()
 
+val rubricClasses = linkedMapOf(
+    "Build/API" to setOf("FrameworkContractTest"),
+    "Core Types" to setOf("CoreTypesUnitTest"),
+    "Replica" to setOf("ReplicaUnitTest"),
+    "Acceptor" to setOf("AcceptorUnitTest"),
+    "Leader/pmax" to setOf("LeaderUnitTest", "PmaxUnitTest"),
+    "Scout" to setOf("ScoutUnitTest"),
+    "Commander" to setOf("CommanderUnitTest"),
+    "Basic Integration" to setOf("SingleCommandIT", "SequentialCommandsIT", "ConcurrentClientsIT",
+        "SameLockerConflictIT", "CompetingReplicaProposalIT", "OutOfOrderDecisionIT", "LocalTcpSingleCommandIT"),
+    "Network / Adversarial Safety" to setOf("DelayMessagesIT", "DuplicateMessagesIT", "ReorderedMessagesIT",
+        "TemporaryDropIT", "LeaderPartitionIT", "ReplicaPartitionIT", "MinorityAcceptorPartitionIT",
+        "PartitionHealIT", "PartitionFailoverHealIT", "StaleLeaderMessagesIT", "StaleCommanderMessagesIT"),
+    "Stress / Chaos" to setOf("ChaosIT", "DeterministicChaosIT", "StressConfigurationTest", "StressF2Test",
+        "StressF3Test", "LongLogStressTest"),
+    "Crash Recovery / Failover" to setOf("AcceptorPersistenceIT", "AcceptorRepeatedRestartIT",
+        "AcceptorRestartPlusDuplicateMessagesIT", "CommanderAndLeaderCrashAfterChosenIT",
+        "CommanderCrashAfterChosenIT", "CommanderCrashAfterMinorityIT", "CommanderCrashBeforeP2aIT",
+        "CommanderCrashPlusReplicaPartitionIT", "CommanderPartialDecisionDeliveryIT", "EventuallyStableLeaderIT",
+        "F2LostQuorumIT", "F2TwoAcceptorFailureIT", "LeaderCrashAfterAdoptedIT", "LeaderCrashAfterChosenIT",
+        "LeaderCrashBeforeScoutIT", "LeaderCrashDuringCommandersIT", "LeaderCrashPlusAcceptorDownIT",
+        "LeaderFailoverPlusOldCommanderIT", "LostQuorumSafetyIT", "MultipleReplicaRecoveryIT",
+        "OldLeaderReturnsIT", "OneAcceptorFailureIT", "ReplicaCatchupIT", "ReplicaGapCatchupIT",
+        "ReplicaRestartDuringTrafficIT", "ScoutCrashAfterMinorityIT", "ScoutCrashAfterQuorumIT",
+        "ScoutCrashBeforeAdoptedIT", "ScoutCrashBeforeSendIT", "ScoutCrashPlusStaleLeaderIT",
+        "ThreeLeadersCompeteIT", "TwoLeadersCompeteIT", "TwoLeadersPlusAcceptorCrashIT")
+)
+
+fun sectionFor(test: String): String? {
+    val className = test.removePrefix("paxoslocker.grader.").substringBefore('.')
+    return rubricClasses.entries.singleOrNull { className in it.value }?.key
+}
+
+fun hasCappedSafetyViolation(messages: Iterable<*>): Boolean =
+    messages.any { "SAFETY_CHOSEN_CONFLICT:" in it.toString() }
+
+val validateRubricMapping by tasks.registering {
+    inputs.files(fileTree("src/test/java/paxoslocker/grader") { include("*.java") })
+    doLast {
+        val testClasses = inputs.files.files.filter { it.readText().contains("@Test") }.map { it.nameWithoutExtension }
+        val unmapped = testClasses.filter { sectionFor("paxoslocker.grader.$it.test") == null }
+        val multiplyMapped = testClasses.filter { name -> rubricClasses.values.count { name in it } != 1 }
+        check(unmapped.isEmpty() && multiplyMapped.isEmpty()) {
+            "Every grader test class must map exactly once. unmapped=$unmapped multiplyMapped=$multiplyMapped"
+        }
+    }
+}
+
+val validateSafetyCapMarker by tasks.registering {
+    doLast {
+        check(hasCappedSafetyViolation(listOf("SAFETY_CHOSEN_CONFLICT: slot 1")))
+        check(!hasCappedSafetyViolation(listOf("SAFETY_A5: higher accepted value", "timeout")))
+    }
+}
+
 fun Test.configureGrader(includeTag: String? = null) {
     outputs.upToDateWhen { false }
     testClassesDirs = sourceSets["test"].output.classesDirs
@@ -35,7 +90,7 @@ fun Test.configureGrader(includeTag: String? = null) {
     }))
 }
 
-tasks.test { configureGrader("framework") }
+tasks.test { configureGrader("framework"); dependsOn(validateRubricMapping, validateSafetyCapMarker) }
 
 val studentUnitTest by tasks.registering(Test::class) {
     description = "Runs unit contracts for student protocol TODOs."
@@ -82,19 +137,6 @@ val writeGradingSummary by tasks.registering {
             "Crash Recovery / Failover" to 10,
             "Network / Adversarial Safety" to 10, "Stress / Chaos" to 5
         )
-        fun sectionFor(test: String): String = when {
-            "Framework" in test -> "Build/API"
-            "CoreTypes" in test -> "Core Types"
-            "AcceptorUnit" in test -> "Acceptor"
-            "ReplicaUnit" in test -> "Replica"
-            "LeaderUnit" in test || "PmaxUnit" in test -> "Leader/pmax"
-            "ScoutUnit" in test -> "Scout"
-            "CommanderUnit" in test -> "Commander"
-            listOf("SingleCommand", "SequentialCommands", "ConcurrentClients", "SameLockerConflict", "CompetingReplicaProposal", "OutOfOrderDecision", "LocalTcpSingleCommand").any { it in test } -> "Basic Integration"
-            listOf("DelayMessages", "DuplicateMessages", "ReorderedMessages", "TemporaryDrop", "Partition", "Stale", "MinorityAcceptorPartition").any { it in test } -> "Network / Adversarial Safety"
-            "Chaos" in test || "Stress" in test || "LongLog" in test -> "Stress / Chaos"
-            else -> "Crash Recovery / Failover"
-        }
         val sectionPoints = rubric.mapValues { (section, maximum) ->
             val sectionResults = results.filter { sectionFor(it["test"].toString()) == section }
             val passed = sectionResults.count { it["status"] == "SUCCESS" }
@@ -103,7 +145,7 @@ val writeGradingSummary by tasks.registering {
                 "passed" to passed, "total" to sectionResults.size)
         }
         val rawTotal = sectionPoints.values.sumOf { (it["awarded"] as Number).toDouble() }
-        val safetyViolation = failures.any { failure -> (failure["failures"] as List<*>).any { "two chosen values" in it.toString() } }
+        val safetyViolation = failures.any { failure -> hasCappedSafetyViolation(failure["failures"] as List<*>) }
         val cappedTotal = if (safetyViolation) minOf(rawTotal, 60.0) else rawTotal
         val payload = linkedMapOf(
             "totalPoints" to Math.round(cappedTotal * 100.0) / 100.0,

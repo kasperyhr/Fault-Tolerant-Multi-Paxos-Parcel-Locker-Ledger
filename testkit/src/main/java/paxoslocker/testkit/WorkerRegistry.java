@@ -19,12 +19,14 @@ public final class WorkerRegistry {
         ScoutKey key = new ScoutKey(scout.leaderId(), scout.ballot());
         Scout previous = scouts.putIfAbsent(key, scout);
         if (previous != null && previous != scout) throw new IllegalStateException("Scout already registered: " + key);
+        terminal.remove(key);
     }
     public void register(Commander commander) {
         PValue pv = commander.pvalue();
         CommanderKeyWithLeader key = new CommanderKeyWithLeader(commander.leaderId(), pv.ballot(), pv.slot());
         Commander previous = commanders.putIfAbsent(key, commander);
         if (previous != null && previous != commander) throw new IllegalStateException("Commander already registered: " + key);
+        terminal.remove(key);
     }
     public void unregisterScout(NodeId leader, BallotNumber ballot) { ScoutKey key=new ScoutKey(leader,ballot);scouts.remove(key);terminal.add(key); }
     public void unregisterCommander(NodeId leader, BallotNumber ballot, long slot) { CommanderKeyWithLeader key=new CommanderKeyWithLeader(leader,ballot,slot);commanders.remove(key);terminal.add(key); }
