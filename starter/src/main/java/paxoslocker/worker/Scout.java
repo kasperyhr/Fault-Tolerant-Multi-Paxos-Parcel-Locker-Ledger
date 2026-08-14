@@ -2,7 +2,8 @@ package paxoslocker.worker;
 
 import paxoslocker.diagnostics.*;
 import paxoslocker.model.*;
-import paxoslocker.protocol.P1bMessage;
+import paxoslocker.protocol.*;
+import paxoslocker.transport.MessageEnvelope;
 import paxoslocker.transport.Transport;
 
 import java.util.Set;
@@ -19,6 +20,8 @@ public class Scout {
     protected final Transport transport;
     protected final WorkerHook hook;
     private final AtomicBoolean terminal = new AtomicBoolean();
+    private final Object stateLock = new Object();
+    private final ScoutState state = new ScoutState();
 
     public Scout(NodeId leader, BallotNumber ballot, Set<NodeId> acceptors, int quorum,
                  Transport transport, WorkerHook hook) {
@@ -33,31 +36,75 @@ public class Scout {
     }
 
     public void start() {
-        throw todo("Scout.start: send P1A and collect unique quorum responses");
+        if (isKilled()) return;
+        P1aMessage message = new P1aMessage(ballot);
+        emit(WorkerEventType.P1A_BEFORE_SEND);
+        if (isKilled()) return;
+        for (NodeId acceptor : acceptors) {
+            transport.send(MessageEnvelope.of(leader, acceptor, message));
+        }
+        emit(WorkerEventType.P1A_AFTER_SEND);
     }
 
     public void onP1b(P1bMessage response) {
-        throw todo("Scout.onP1b: validate requestedBallot, use acceptorBallot for ADOPTED/PREEMPTED, then exit");
+        if (isKilled()) return;
+        emit(WorkerEventType.P1B_RECEIVED);
+        if (isKilled()) return;
+        if (!response.requestedBallot().equals(ballot)) return;
+        int cmp = response.acceptorBallot().compareTo(ballot);
+        if (cmp < 0) return;
+        synchronized (stateLock) {
+            if (cmp > 0) {
+                transport.send(MessageEnvelope.of(leader, leader, new PreemptedMessage(response.acceptorBallot())));
+                kill();
+                return;
+            }
+            if (!state.addResponse(response.acceptor(), response.accepted())) return;
+            if (state.responses().size() >= quorum) {
+                emit(WorkerEventType.SCOUT_QUORUM_REACHED);
+                if (isKilled()) return;
+                AdoptedMessage message = new AdoptedMessage(ballot, state.accepted());
+                emit(WorkerEventType.ADOPTED_BEFORE_SEND);
+                if (isKilled()) return;
+                transport.send(MessageEnvelope.of(leader, leader, message));
+                kill();
+            }
+        }
     }
 
     public void kill() {
         markExited();
     }
 
-    /** Shared terminal transition for kill and normal student-implemented completion. */
+    /**
+     * Shared terminal transition for kill and normal student-implemented completion.
+     */
     protected final boolean markExited() {
         if (!terminal.compareAndSet(false, true)) return false;
         hook.onEvent(WorkerEventType.SCOUT_EXITED, ballot, null);
         return true;
     }
 
-    public final NodeId leaderId() { return leader; }
-    public final BallotNumber ballot() { return ballot; }
-    public final boolean isKilled() { return terminal.get(); }
-    protected final void emit(WorkerEventType event) { hook.onEvent(event, ballot, null); }
+    public final NodeId leaderId() {
+        return leader;
+    }
+
+    public final BallotNumber ballot() {
+        return ballot;
+    }
+
+    public final boolean isKilled() {
+        return terminal.get();
+    }
+
+    protected final void emit(WorkerEventType event) {
+        hook.onEvent(event, ballot, null);
+    }
 
     public ScoutStatus status() {
-        throw todo("Scout.status");
+        synchronized (stateLock) {
+            return new ScoutStatus(ballot, state.responses(), !isKilled());
+        }
     }
 
     private static UnsupportedOperationException todo(String text) {
