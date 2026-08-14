@@ -71,11 +71,11 @@ public class Commander {
                 if (isKilled()) return;
                 DecisionMessage message = new DecisionMessage(pvalue.slot(), pvalue().command());
                 emit(WorkerEventType.DECISION_BEFORE_SEND);
-                if (isKilled()) return;
                 for (NodeId replica: replicas) {
+                    if (isKilled()) return;
                     transport.send(MessageEnvelope.of(leader, replica, message));
+                    emit(WorkerEventType.DECISION_AFTER_SEND);
                 }
-                emit(WorkerEventType.DECISION_AFTER_SEND);
                 if (isKilled()) return;
                 kill();
             }
