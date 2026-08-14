@@ -20,7 +20,7 @@ public class Leader implements NodeLifecycle {
     private static final long PREEMPT_BACKOFF_MIN_MS = 200;
     private static final long PREEMPT_BACKOFF_MAX_MS = 800;
     private static final long HEARTBEAT_INTERVAL_MS = 500;
-    private static final long FAILURE_TIMEOUT_MS = 2_000;
+    private static final long FAILURE_TIMEOUT_NANOS = TimeUnit.MILLISECONDS.toNanos(2_000);
     private static final long FAILURE_CHECK_INTERVAL_MS = 250;
     protected final NodeId id;
     protected final Transport transport;
@@ -85,7 +85,7 @@ public class Leader implements NodeLifecycle {
                 }
             }
         }
-
+        sendHeartbeat();
         for (PValue pValue : map.keySet()) {
             if (!isRunning()) return;
             workerHook.onEvent(WorkerEventType.COMMANDER_CREATED, pValue.ballot(), pValue.slot());
@@ -282,7 +282,7 @@ public class Leader implements NodeLifecycle {
     }
 
     private boolean isTimedOut(LeaderHeartbeatState state) {
-        return System.nanoTime() - state.lastSeen() > FAILURE_TIMEOUT_MS;
+        return System.nanoTime() - state.lastSeen() > FAILURE_TIMEOUT_NANOS;
     }
 
     private void preemptedMessage(BallotNumber ballot) {

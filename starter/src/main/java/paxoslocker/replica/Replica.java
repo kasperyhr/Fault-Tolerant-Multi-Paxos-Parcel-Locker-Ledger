@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Student implementation point: ordering, re-proposal, catch-up, replay and deduplication.
  */
 public class Replica implements NodeLifecycle {
-    private static final long LEADER_TIMEOUT_MS = 2_000;
+    private static final long LEADER_TIMEOUT_NANOS = TimeUnit.MILLISECONDS.toNanos(2_000);
     private static final long LEADER_REFRESH_INTERVAL_MS = 250;
     private static final long CATCH_UP_INTERVAL_MS = 500;
     private static final int MAX_ENTRIES = 100;
@@ -240,7 +240,7 @@ public class Replica implements NodeLifecycle {
             leaderHeartbeatStates = Map.copyOf(state.leaderHeartbeatStates());
             oldLeader = state.knownLeader();
             newLeader =  leaderHeartbeatStates.entrySet().stream().filter(e -> e.getValue().active())
-                    .filter(e -> System.nanoTime() - e.getValue().lastSeen() < LEADER_TIMEOUT_MS)
+                    .filter(e -> System.nanoTime() - e.getValue().lastSeen() < LEADER_TIMEOUT_NANOS)
                     .max((a, b) -> a.getValue().ballot().compareTo(b.getValue().ballot()))
                     .map(Map.Entry::getKey).orElse(null);
             if (!Objects.equals(oldLeader, newLeader)) {
