@@ -19,9 +19,11 @@ import java.util.stream.Collectors;
 public class Leader implements NodeLifecycle {
     private static final long PREEMPT_BACKOFF_MIN_MS = 200;
     private static final long PREEMPT_BACKOFF_MAX_MS = 800;
+    private static final long PREEMPT_BACKOFF_CAP_MS = 5_000;
     private static final long HEARTBEAT_INTERVAL_MS = 500;
     private static final long FAILURE_TIMEOUT_NANOS = TimeUnit.MILLISECONDS.toNanos(2_000);
     private static final long FAILURE_CHECK_INTERVAL_MS = 250;
+    private static final long WORKER_RETRY_INTERVAL_MS = 500;
     protected final NodeId id;
     protected final Transport transport;
     protected final ClusterMembership membership;
@@ -97,9 +99,15 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         synchronized (stateLock) {
             preemptedMessage(state.ballot());
+            setToInactive(preempted.observedBallot());
+        }
+    }
+
+    private void setToInactive(BallotNumber ballot) {
+        synchronized (stateLock) {
             state.setActive(false);
             state.incrementRetries();
-            state.ballotAfter(preempted.observedBallot());
+            state.ballotAfter(ballot);
             if (currentScout != null) {
                 currentScout.kill();
                 currentScout = null;
@@ -109,7 +117,7 @@ public class Leader implements NodeLifecycle {
                 commanders.remove(key);
             }
         }
-        scheduler.schedule(this::retryLogic, getExponentialRetryTime(), TimeUnit.MILLISECONDS);
+        scheduler.schedule(this::retryLogic, getExponentialRetryTime(PREEMPT_BACKOFF_MIN_MS, PREEMPT_BACKOFF_MAX_MS, PREEMPT_BACKOFF_CAP_MS), TimeUnit.MILLISECONDS);
     }
 
     public void onHeartbeat(HeartbeatMessage heartbeat, NodeId peerLeader) {
@@ -117,6 +125,9 @@ public class Leader implements NodeLifecycle {
         synchronized (stateLock) {
             state.updatePeerState(peerLeader,
                     new LeaderHeartbeatState(heartbeat.active(), System.nanoTime(), heartbeat.ballot()));
+            if (state.active() && heartbeat.active() && state.ballot().compareTo(heartbeat.ballot()) < 0) {
+                setToInactive(heartbeat.ballot());
+            }
         }
     }
 
@@ -149,6 +160,47 @@ public class Leader implements NodeLifecycle {
         }
     }
 
+    private void retryScout() {
+        if (!isRunning()) return;
+        synchronized (stateLock) {
+            if (!state.active()) return;
+            if (currentScout != null && !currentScout.isKilled() && currentScout.ballot().equals(state.ballot())) {
+                currentScout.start();
+            }
+        }
+    }
+
+    private void retryCommanders() {
+        if (!isRunning()) return;
+        List<Commander> retryCommanders = new ArrayList<>();
+        synchronized (stateLock) {
+            if (!state.active()) return;
+            for (CommanderKey key : commanders.keySet()) {
+                Commander commander = commanders.get(key);
+                if (commander.isKilled()) {
+                    commanders.remove(key, commander);
+                }
+                if (commander.pvalue().ballot().equals(state.ballot())) {
+                    retryCommanders.add(commander);
+                }
+            }
+        }
+        for (Commander commander : retryCommanders) {
+            commander.start();
+        }
+    }
+
+    private void addSchedules() {
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(this::sendHeartbeat, 0, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(this::checkHeartbeat, FAILURE_CHECK_INTERVAL_MS, FAILURE_CHECK_INTERVAL_MS,
+                TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(this::retryScout, WORKER_RETRY_INTERVAL_MS, WORKER_RETRY_INTERVAL_MS,
+                TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(this::retryCommanders, WORKER_RETRY_INTERVAL_MS, WORKER_RETRY_INTERVAL_MS,
+                TimeUnit.MILLISECONDS);
+    }
+
     @Override
     public void start() {
         if (!running.compareAndSet(false, true)) return;
@@ -156,10 +208,7 @@ public class Leader implements NodeLifecycle {
         diagnostics.record(new ProtocolDiagnosticEvent(id, Role.LEADER,
                 ProtocolDiagnosticType.NODE_STARTED, null, null, null, null, null, ""));
         /* TODO(student): create Scout and schedule heartbeat/failure suspicion. */
-        scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleAtFixedRate(this::sendHeartbeat, 0, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
-        scheduler.scheduleAtFixedRate(this::checkHeartbeat, FAILURE_CHECK_INTERVAL_MS, FAILURE_CHECK_INTERVAL_MS,
-                TimeUnit.MILLISECONDS);
+        addSchedules();
     }
 
     @Override
@@ -272,13 +321,14 @@ public class Leader implements NodeLifecycle {
         }
     }
 
-    private long getExponentialRetryTime() {
+    private long getExponentialRetryTime(long min, long max, long cap) {
         long exp;
         synchronized (stateLock) {
-            exp = (long) Math.pow(2L, (long) state.retries());
+            int retries = Math.min(state.retries(), 4);
+            exp = 1L << retries;
         }
         return ThreadLocalRandom.current()
-                .nextLong(PREEMPT_BACKOFF_MIN_MS * exp, PREEMPT_BACKOFF_MAX_MS * exp);
+                .nextLong(Math.min(min * exp, cap), Math.max(max * exp, cap));
     }
 
     private boolean isTimedOut(LeaderHeartbeatState state) {

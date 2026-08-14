@@ -190,8 +190,8 @@ public class Replica implements NodeLifecycle {
             stateMachine.apply(command);
             state.updateSlotOut();
             state.addExecutedRequestId(command.requestId(), command);
+            recordCommandExecuted(slot, command);
         }
-        recordCommandExecuted(slot, command);
     }
 
     private void storeState() {
