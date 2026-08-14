@@ -39,11 +39,9 @@ class LeaderState {
         return retries;
     }
 
-    Optional<LeaderHeartbeatState> findHigherBallotPeer(BallotNumber ballot) {
-        for (LeaderHeartbeatState leaderHeartbeatState : peerStates.values()) {
-            if (leaderHeartbeatState.active() && leaderHeartbeatState.ballot().compareTo(ballot) > 0) {
-                return Optional.of(leaderHeartbeatState);
-            }
+    Optional<LeaderHeartbeatState> findCurrentActivePeer() {
+        for (LeaderHeartbeatState peer : peerStates.values()) {
+            if (peer.active()) return Optional.of(peer);
         }
         return Optional.empty();
     }

@@ -99,7 +99,7 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         synchronized (stateLock) {
             preemptedMessage(state.ballot());
-            setToInactive(preempted.observedBallot());
+            handlePreemption(preempted.observedBallot());
         }
     }
 
@@ -120,14 +120,50 @@ public class Leader implements NodeLifecycle {
         scheduler.schedule(this::retryLogic, getExponentialRetryTime(PREEMPT_BACKOFF_MIN_MS, PREEMPT_BACKOFF_MAX_MS, PREEMPT_BACKOFF_CAP_MS), TimeUnit.MILLISECONDS);
     }
 
+    private void yieldToLeader() {
+        synchronized (stateLock) {
+            state.setActive(false);
+            if (currentScout != null) {
+                currentScout.kill();
+                currentScout = null;
+            }
+            for (Commander commander : commanders.values()) {
+                commander.kill();
+            }
+            commanders.clear();
+        }
+    }
+
+    private void handlePreemption(BallotNumber observedBallot) {
+        synchronized (stateLock) {
+            state.setActive(false);
+            state.incrementRetries();
+            state.ballotAfter(observedBallot);
+            if (currentScout != null) {
+                currentScout.kill();
+                currentScout = null;
+            }
+            for (Commander commander : commanders.values()) {
+                commander.kill();
+            }
+            commanders.clear();
+        }
+        long delay = getExponentialRetryTime(PREEMPT_BACKOFF_MIN_MS, PREEMPT_BACKOFF_MAX_MS, PREEMPT_BACKOFF_CAP_MS);
+        scheduler.schedule(this::checkHeartbeat, delay, TimeUnit.MILLISECONDS);
+    }
+
     public void onHeartbeat(HeartbeatMessage heartbeat, NodeId peerLeader) {
         if (!isRunning()) return;
+        boolean shouldYield = false;
         synchronized (stateLock) {
             state.updatePeerState(peerLeader,
                     new LeaderHeartbeatState(heartbeat.active(), System.nanoTime(), heartbeat.ballot()));
-            if (state.active() && heartbeat.active() && state.ballot().compareTo(heartbeat.ballot()) < 0) {
-                setToInactive(heartbeat.ballot());
+            if (state.active() && heartbeat.active() && heartbeat.ballot().compareTo(state.ballot()) > 0) {
+                shouldYield = true;
             }
+        }
+        if (shouldYield) {
+            yieldToLeader();
         }
     }
 
@@ -281,7 +317,7 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         synchronized (stateLock) {
             if (state.active()) return;
-            Optional<LeaderHeartbeatState> activePeer = state.findHigherBallotPeer(state.ballot());
+            Optional<LeaderHeartbeatState> activePeer = state.findCurrentActivePeer();
             if (activePeer.isPresent() && !isTimedOut(activePeer.get())) return;
             if (currentScout != null && !currentScout.isKilled()) return;
         }
