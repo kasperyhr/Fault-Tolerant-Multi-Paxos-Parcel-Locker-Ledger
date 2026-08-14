@@ -75,8 +75,8 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         Map<PValue, Commander> map = new HashMap<>();
         synchronized (stateLock) {
-            state.updateProposal(pmax(adopted.accepted()));
             if (adopted.ballot().equals(state.ballot())) {
+                state.updateProposal(pmax(adopted.accepted()));
                 state.setActive(true);
                 state.resetRetries();
                 cleanCommanders();
@@ -281,7 +281,7 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         synchronized (stateLock) {
             if (state.active()) return;
-            Optional<LeaderHeartbeatState> activePeer = state.findCurrentActivePeer();
+            Optional<LeaderHeartbeatState> activePeer = state.findHigherBallotPeer(state.ballot());
             if (activePeer.isPresent() && !isTimedOut(activePeer.get())) return;
             if (currentScout != null && !currentScout.isKilled()) return;
         }
