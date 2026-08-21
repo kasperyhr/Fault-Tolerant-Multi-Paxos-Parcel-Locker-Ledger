@@ -110,6 +110,7 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         synchronized (stateLock) {
             if (!isRunning()) return;
+            if (preempted.observedBallot().compareTo(state.ballot()) <= 0) return;
             preemptedMessage(state.ballot());
             handlePreemption(preempted.observedBallot());
         }
