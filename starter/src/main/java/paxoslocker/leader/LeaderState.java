@@ -39,11 +39,8 @@ class LeaderState {
         return retries;
     }
 
-    Optional<LeaderHeartbeatState> findCurrentActivePeer() {
-        for (LeaderHeartbeatState peer : peerStates.values()) {
-            if (peer.active()) return Optional.of(peer);
-        }
-        return Optional.empty();
+    Map<NodeId, LeaderHeartbeatState> peerStates() {
+        return Map.copyOf(peerStates);
     }
 
     void setActive(boolean active) {

@@ -54,6 +54,7 @@ public class Leader implements NodeLifecycle {
         PValue pValue = null;
         Commander commander = null;
         synchronized (stateLock) {
+            if (!isRunning()) return;
             if (!state.proposals().containsKey(proposal.slot())) {
                 state.addProposal(proposal.slot(), proposal.command());
                 if (state.active()) {
@@ -65,6 +66,10 @@ public class Leader implements NodeLifecycle {
         }
 
         if (commander != null) {
+            if (!isRunning()) {
+                commander.kill();
+                return;
+            }
             workerHook.onEvent(WorkerEventType.COMMANDER_CREATED, pValue.ballot(), pValue.slot());
             commander.start();
         }
@@ -75,6 +80,7 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         Map<PValue, Commander> map = new HashMap<>();
         synchronized (stateLock) {
+            if (!isRunning()) return;
             if (adopted.ballot().equals(state.ballot())) {
                 state.updateProposal(pmax(adopted.accepted()));
                 state.setActive(true);
@@ -89,15 +95,21 @@ public class Leader implements NodeLifecycle {
         }
         sendHeartbeat();
         for (PValue pValue : map.keySet()) {
-            if (!isRunning()) return;
+            if (!isRunning()) break;
             workerHook.onEvent(WorkerEventType.COMMANDER_CREATED, pValue.ballot(), pValue.slot());
             map.get(pValue).start();
+        }
+        if (!isRunning()) {
+            for (PValue pValue : map.keySet()) {
+                map.get(pValue).kill();
+            }
         }
     }
 
     public void onPreempted(PreemptedMessage preempted) {
         if (!isRunning()) return;
         synchronized (stateLock) {
+            if (!isRunning()) return;
             preemptedMessage(state.ballot());
             handlePreemption(preempted.observedBallot());
         }
@@ -156,6 +168,7 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         boolean shouldYield = false;
         synchronized (stateLock) {
+            if (!isRunning()) return;
             state.updatePeerState(peerLeader,
                     new LeaderHeartbeatState(heartbeat.active(), System.nanoTime(), heartbeat.ballot()));
             if (state.active() && heartbeat.active() && heartbeat.ballot().compareTo(state.ballot()) > 0) {
@@ -198,11 +211,15 @@ public class Leader implements NodeLifecycle {
 
     private void retryScout() {
         if (!isRunning()) return;
+        Scout scout = null;
         synchronized (stateLock) {
-            if (!state.active()) return;
+            if (state.active()) return;
             if (currentScout != null && !currentScout.isKilled() && currentScout.ballot().equals(state.ballot())) {
-                currentScout.start();
+                scout = currentScout;
             }
+        }
+        if (scout != null) {
+            scout.start();
         }
     }
 
@@ -252,11 +269,16 @@ public class Leader implements NodeLifecycle {
         if (!running.compareAndSet(true, false)) return;
         scheduler.shutdown();
         transport.unregister(id);
-        Scout scout = currentScout;
-        if (scout != null) scout.kill();
-        commanders.values().forEach(Commander::kill);
-        commanders.clear();
-        currentScout = null;
+        synchronized (stateLock) {
+            if (currentScout != null) {
+                currentScout.kill();
+                currentScout = null;
+            }
+            commanders.values().forEach(Commander::kill);
+            commanders.clear();
+            currentScout = null;
+            state.setActive(false);
+        }
         diagnostics.record(new ProtocolDiagnosticEvent(id, Role.LEADER,
                 ProtocolDiagnosticType.NODE_STOPPED, null, null, null, null, null, ""));
     }
@@ -317,8 +339,10 @@ public class Leader implements NodeLifecycle {
         if (!isRunning()) return;
         synchronized (stateLock) {
             if (state.active()) return;
-            Optional<LeaderHeartbeatState> activePeer = state.findCurrentActivePeer();
-            if (activePeer.isPresent() && !isTimedOut(activePeer.get())) return;
+            boolean hasFreshActivePeer = state.peerStates().values().stream()
+                    .anyMatch(peer ->
+                            peer.active() && System.nanoTime() - peer.lastSeen() <= FAILURE_TIMEOUT_NANOS);
+            if (hasFreshActivePeer) return;
             if (currentScout != null && !currentScout.isKilled()) return;
         }
         retryLogic();
@@ -343,15 +367,20 @@ public class Leader implements NodeLifecycle {
     }
 
     private void retryLogic() {
+        if (!isRunning()) return;
         BallotNumber ballot = null;
         Scout scout = null;
         synchronized (stateLock) {
+            if (!isRunning()) return;
             if (currentScout == null || currentScout.isKilled()) {
                 ballot = state.ballot();
                 scout = createScout(ballot);
             }
         }
         if (scout != null) {
+            if (!isRunning()) {
+                scout.kill();
+            }
             workerHook.onEvent(WorkerEventType.SCOUT_CREATED, ballot, null);
             scout.start();
         }

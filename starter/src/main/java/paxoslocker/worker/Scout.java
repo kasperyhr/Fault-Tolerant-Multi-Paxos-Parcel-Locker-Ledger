@@ -54,6 +54,7 @@ public class Scout {
         int cmp = response.acceptorBallot().compareTo(ballot);
         if (cmp < 0) return;
         synchronized (stateLock) {
+            if (isKilled()) return;
             if (cmp > 0) {
                 transport.send(MessageEnvelope.of(leader, leader, new PreemptedMessage(response.acceptorBallot())));
                 kill();
