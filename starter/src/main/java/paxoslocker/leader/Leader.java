@@ -267,7 +267,9 @@ public class Leader implements NodeLifecycle {
     @Override
     public void stop() {
         if (!running.compareAndSet(true, false)) return;
-        scheduler.shutdown();
+        if (scheduler != null) {
+            scheduler.shutdown();
+        }
         transport.unregister(id);
         synchronized (stateLock) {
             if (currentScout != null) {
@@ -380,6 +382,7 @@ public class Leader implements NodeLifecycle {
         if (scout != null) {
             if (!isRunning()) {
                 scout.kill();
+                return;
             }
             workerHook.onEvent(WorkerEventType.SCOUT_CREATED, ballot, null);
             scout.start();
